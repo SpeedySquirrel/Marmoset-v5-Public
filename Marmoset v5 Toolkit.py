@@ -4,6 +4,9 @@ import os
 
 SUFFIX_PATTERN = re.compile(r"[\s_\-.]*(low|high|hi|lo|lp|hp|lod\d*|\d+)$", re.IGNORECASE)
 
+copiedTransform = None
+copiedTransforms = []
+
 
 def get_all_meshes():
     return [obj for obj in mset.getAllObjects() if obj.__class__ == mset.MeshObject]
@@ -105,6 +108,113 @@ def find_and_select():
     mset.setSelectedObjects(matches)
 
 
+def read_transform(obj):
+    return {
+        "position": list(obj.position),
+        "rotation": list(obj.rotation),
+        "scale": list(obj.scale),
+    }
+
+
+def write_transform(obj, transform):
+    obj.position = list(transform["position"])
+    obj.rotation = list(transform["rotation"])
+    obj.scale = list(transform["scale"])
+
+
+def copy_transform():
+    global copiedTransform
+    selected = mset.getSelectedObjects()
+    if not selected:
+        mset.err("Select an object to copy.")
+        return
+    copiedTransform = read_transform(selected[0])
+
+
+def paste_transform():
+    if copiedTransform is None:
+        mset.err("Nothing copied yet.")
+        return
+    selected = mset.getSelectedObjects()
+    if not selected:
+        mset.err("Select an object to paste onto.")
+        return
+    for obj in selected:
+        write_transform(obj, copiedTransform)
+    mset.refreshUI()
+
+
+def copy_multiple_transforms():
+    global copiedTransforms
+    selected = mset.getSelectedObjects()
+    if not selected:
+        mset.err("Select the objects to copy.")
+        return
+    copiedTransforms = [read_transform(obj) for obj in selected]
+
+
+def duplicate_and_paste_transforms():
+    if not copiedTransforms:
+        mset.err("Nothing copied yet.")
+        return
+    selected = mset.getSelectedObjects()
+    if not selected:
+        mset.err("Select the object to duplicate.")
+        return
+    placed = []
+    for obj in selected:
+        write_transform(obj, copiedTransforms[0])
+        placed.append(obj)
+        for transform in copiedTransforms[1:]:
+            duplicate = obj.duplicate(obj.name)
+            write_transform(duplicate, transform)
+            placed.append(duplicate)
+    mset.setSelectedObjects(placed)
+    mset.refreshUI()
+
+
+def number_pattern(text, index):
+    return re.sub(r"#+", lambda m: str(index).zfill(len(m.group(0))), text)
+
+
+def rename_selected():
+    text = renameField.value.strip()
+    if not text:
+        mset.err("Type a name first.")
+        return
+    meshes = get_selected_meshes()
+    if not meshes:
+        mset.err("Select at least one mesh.")
+        return
+    suffix_only = not re.search(r"[A-Za-z]", text)
+    for index, mesh in enumerate(meshes, 1):
+        new_name = number_pattern(text, index)
+        mesh.name = mesh.name + new_name if suffix_only else new_name
+    mset.refreshUI()
+
+
+def add_suffix(suffix):
+    meshes = get_selected_meshes()
+    if not meshes:
+        mset.err("Select at least one mesh.")
+        return
+    for mesh in meshes:
+        if not mesh.name.lower().endswith(suffix.lower()):
+            mesh.name = mesh.name + suffix
+    mset.refreshUI()
+
+
+def remove_suffix(suffix):
+    meshes = get_selected_meshes()
+    if not meshes:
+        mset.err("Select at least one mesh.")
+        return
+    for mesh in meshes:
+        if mesh.name.lower().endswith(suffix.lower()):
+            mesh.name = mesh.name[:-len(suffix)]
+    mset.refreshUI()
+
+
 def assign_new_material():
     meshes = get_selected_meshes()
     if not meshes:
@@ -151,9 +261,43 @@ def rename_material_from_geometry():
 window = mset.UIWindow("Marmoset v5 Toolkit")
 window.width = 360
 
+sceneDrawer = mset.UIDrawer(name="Scene")
+sceneWindow = mset.UIWindow(name="Scene Window")
+sceneDrawer.containedControl = sceneWindow
+sceneDrawer.open = True
+
 collapseButton = mset.UIButton("Collapse Everything")
 collapseButton.onClick = collapse_everything
-window.addElement(collapseButton)
+sceneWindow.addElement(collapseButton)
+sceneWindow.addReturn()
+
+transformsDrawer = mset.UIDrawer(name="Transforms")
+transformsWindow = mset.UIWindow(name="Transforms Window")
+transformsDrawer.containedControl = transformsWindow
+transformsDrawer.open = True
+
+copyButton = mset.UIButton("Copy")
+copyButton.onClick = copy_transform
+transformsWindow.addElement(copyButton)
+
+pasteButton = mset.UIButton("Paste")
+pasteButton.onClick = paste_transform
+transformsWindow.addElement(pasteButton)
+transformsWindow.addReturn()
+
+copyMultipleButton = mset.UIButton("Copy Multiple")
+copyMultipleButton.onClick = copy_multiple_transforms
+transformsWindow.addElement(copyMultipleButton)
+
+duplicatePasteButton = mset.UIButton("Duplicate and Paste")
+duplicatePasteButton.onClick = duplicate_and_paste_transforms
+transformsWindow.addElement(duplicatePasteButton)
+transformsWindow.addReturn()
+
+sceneWindow.addElement(transformsDrawer)
+sceneWindow.addReturn()
+
+window.addElement(sceneDrawer)
 window.addReturn()
 
 selectingDrawer = mset.UIDrawer(name="Selecting")
@@ -178,6 +322,47 @@ selectingWindow.addReturn()
 window.addElement(selectingDrawer)
 window.addReturn()
 
+namingDrawer = mset.UIDrawer(name="Naming")
+namingWindow = mset.UIWindow(name="Naming Window")
+namingDrawer.containedControl = namingWindow
+namingDrawer.open = True
+
+renameField = mset.UITextField()
+renameField.onChange = rename_selected
+namingWindow.addElement(renameField)
+
+renameButton = mset.UIButton("Rename")
+renameButton.onClick = rename_selected
+namingWindow.addElement(renameButton)
+namingWindow.addReturn()
+
+namingWindow.addElement(mset.UILabel("Use ## to mark the number: ## = 01, 02   #### = 0001, 0002"))
+namingWindow.addReturn()
+
+namingWindow.addElement(mset.UILabel("On selected objects"))
+namingWindow.addReturn()
+
+addLowButton = mset.UIButton("Add suffix _low")
+addLowButton.onClick = lambda: add_suffix("_low")
+namingWindow.addElement(addLowButton)
+
+removeLowButton = mset.UIButton("Remove suffix _low")
+removeLowButton.onClick = lambda: remove_suffix("_low")
+namingWindow.addElement(removeLowButton)
+namingWindow.addReturn()
+
+addHighButton = mset.UIButton("Add suffix _high")
+addHighButton.onClick = lambda: add_suffix("_high")
+namingWindow.addElement(addHighButton)
+
+removeHighButton = mset.UIButton("Remove suffix _high")
+removeHighButton.onClick = lambda: remove_suffix("_high")
+namingWindow.addElement(removeHighButton)
+namingWindow.addReturn()
+
+window.addElement(namingDrawer)
+window.addReturn()
+
 materialsDrawer = mset.UIDrawer(name="Materials")
 materialsWindow = mset.UIWindow(name="Materials Window")
 materialsDrawer.containedControl = materialsWindow
@@ -188,10 +373,15 @@ assignButton.onClick = assign_new_material
 materialsWindow.addElement(assignButton)
 materialsWindow.addReturn()
 
-renameButton = mset.UIButton("Rename Material Based on Geometry Name")
-renameButton.onClick = rename_material_from_geometry
-materialsWindow.addElement(renameButton)
+renameMaterialButton = mset.UIButton("Rename Material Based on Geometry Name")
+renameMaterialButton.onClick = rename_material_from_geometry
+materialsWindow.addElement(renameMaterialButton)
 materialsWindow.addReturn()
 
 window.addElement(materialsDrawer)
+window.addReturn()
+
+window.addElement(mset.UILabel(""))
+window.addReturn()
+window.addElement(mset.UILabel("Made by SpeedySquirrel  -  GitHub: SpeedySquirrel"))
 window.addReturn()

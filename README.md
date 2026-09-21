@@ -4,6 +4,18 @@ A collection of small scripts I use every day to speed up work in Marmoset Toolb
 
 ---
 
+## Installation
+
+1. Copy the Python script into your Marmoset plugins folder. The usual path is:
+
+C:\Users\<your-username>\AppData\Local\Marmoset Toolbag 5\plugins
+
+2. In Marmoset Toolbag, go to **Edit > Plugins > Refresh**.
+3. Open it from **Edit > Plugins > MarmosetToolkit**.
+
+
+---
+
 ## Scene
 
 ### Collapse Everything

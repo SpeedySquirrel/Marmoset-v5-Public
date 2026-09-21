@@ -1,84 +1,68 @@
 import mset
-import re
 import os
+import re
 
 SUFFIX_PATTERN = re.compile(r"[\s_\-.]*(low|high|hi|lo|lp|hp|lod\d*|\d+)$", re.IGNORECASE)
-
-copiedTransform = None
-copiedTransforms = []
-
-
-def get_all_meshes():
-    return [obj for obj in mset.getAllObjects() if obj.__class__ == mset.MeshObject]
+TRANSFORM_KEYS = ("position", "rotation", "scale")
+clipboard = {"one": None, "many": []}
 
 
-def get_meshes_in(obj):
+def selection(message):
+    objects = mset.getSelectedObjects()
+    if not objects:
+        mset.err(message)
+    return objects
+
+
+def all_meshes():
+    return [o for o in mset.getAllObjects() if o.__class__ == mset.MeshObject]
+
+
+def meshes_in(obj):
     if obj.__class__ == mset.MeshObject:
         return [obj]
-    meshes = []
-    for child in obj.getChildren():
-        meshes.extend(get_meshes_in(child))
-    return meshes
+    return [m for child in obj.getChildren() for m in meshes_in(child)]
 
 
-def get_selected_meshes():
-    meshes = []
-    seen = set()
+def selected_meshes():
+    meshes = {}
     for obj in mset.getSelectedObjects():
-        for mesh in get_meshes_in(obj):
-            if mesh.uid not in seen:
-                seen.add(mesh.uid)
-                meshes.append(mesh)
-    return meshes
+        for mesh in meshes_in(obj):
+            meshes[mesh.uid] = mesh
+    if not meshes:
+        mset.err("Select at least one mesh.")
+    return list(meshes.values())
 
 
-def get_material(mesh):
-    for child in mesh.getChildren():
-        if child.__class__ == mset.SubMeshObject and child.material is not None:
-            return child.material
-    return None
-
-
-def assign_material(mesh, material):
-    submeshes = [c for c in mesh.getChildren() if c.__class__ == mset.SubMeshObject]
-    if submeshes:
-        for sub in submeshes:
-            sub.material = material
-    else:
-        mesh.addSubmesh(mesh.name + "_submesh", material=material, startIndex=0, indexCount=-1)
+def submeshes(mesh):
+    return [c for c in mesh.getChildren() if c.__class__ == mset.SubMeshObject]
 
 
 def base_name(name):
-    stripped = name
     while True:
-        result = SUFFIX_PATTERN.sub("", stripped)
-        if result == stripped or result == "":
-            break
-        stripped = result
-    return stripped
+        stripped = SUFFIX_PATTERN.sub("", name)
+        if stripped in (name, ""):
+            return name
+        name = stripped
 
 
 def shared_name(meshes):
-    bases = set(base_name(mesh.name) for mesh in meshes)
+    bases = set(base_name(m.name) for m in meshes)
     if len(bases) == 1:
         return bases.pop()
-    prefix = os.path.commonprefix([mesh.name for mesh in meshes]).rstrip("_-. ")
-    if prefix:
-        return prefix
-    return meshes[0].name
+    prefix = os.path.commonprefix([m.name for m in meshes]).rstrip("_-. ")
+    return prefix or meshes[0].name
 
 
 def free_name(candidates, material):
-    taken = [m.name for m in mset.getAllMaterials()]
-    if material.name in taken:
-        taken.remove(material.name)
+    taken = [m.name for m in mset.getAllMaterials() if m.name != material.name]
     for candidate in candidates:
         if candidate not in taken:
             return candidate
     index = 1
-    while candidates[-1] + "_" + str(index) in taken:
+    while "%s_%d" % (candidates[-1], index) in taken:
         index += 1
-    return candidates[-1] + "_" + str(index)
+    return "%s_%d" % (candidates[-1], index)
 
 
 def collapse_everything():
@@ -89,92 +73,68 @@ def collapse_everything():
 
 
 def select_all_geometry():
-    meshes = get_all_meshes()
-    if not meshes:
+    meshes = all_meshes()
+    if meshes:
+        mset.setSelectedObjects(meshes)
+    else:
         mset.err("No geometry in the scene.")
-        return
-    mset.setSelectedObjects(meshes)
 
 
 def find_and_select():
-    text = searchField.value.strip().lower()
+    text = searchField.value.strip()
     if not text:
         mset.err("Type a name to search for.")
         return
-    matches = [mesh for mesh in get_all_meshes() if text in mesh.name.lower()]
-    if not matches:
-        mset.err("No meshes found containing '" + searchField.value.strip() + "'.")
-        return
-    mset.setSelectedObjects(matches)
+    matches = [m for m in all_meshes() if text.lower() in m.name.lower()]
+    if matches:
+        mset.setSelectedObjects(matches)
+    else:
+        mset.err("No meshes found containing '" + text + "'.")
 
 
 def read_transform(obj):
-    return {
-        "position": list(obj.position),
-        "rotation": list(obj.rotation),
-        "scale": list(obj.scale),
-    }
+    return {key: list(getattr(obj, key)) for key in TRANSFORM_KEYS}
 
 
 def write_transform(obj, transform):
-    obj.position = list(transform["position"])
-    obj.rotation = list(transform["rotation"])
-    obj.scale = list(transform["scale"])
+    for key in TRANSFORM_KEYS:
+        setattr(obj, key, list(transform[key]))
 
 
 def copy_transform():
-    global copiedTransform
-    selected = mset.getSelectedObjects()
-    if not selected:
-        mset.err("Select an object to copy.")
-        return
-    copiedTransform = read_transform(selected[0])
+    objects = selection("Select an object to copy.")
+    if objects:
+        clipboard["one"] = read_transform(objects[0])
 
 
 def paste_transform():
-    if copiedTransform is None:
+    if clipboard["one"] is None:
         mset.err("Nothing copied yet.")
         return
-    selected = mset.getSelectedObjects()
-    if not selected:
-        mset.err("Select an object to paste onto.")
-        return
-    for obj in selected:
-        write_transform(obj, copiedTransform)
+    for obj in selection("Select an object to paste onto."):
+        write_transform(obj, clipboard["one"])
     mset.refreshUI()
 
 
 def copy_multiple_transforms():
-    global copiedTransforms
-    selected = mset.getSelectedObjects()
-    if not selected:
-        mset.err("Select the objects to copy.")
-        return
-    copiedTransforms = [read_transform(obj) for obj in selected]
+    objects = selection("Select the objects to copy.")
+    if objects:
+        clipboard["many"] = [read_transform(o) for o in objects]
 
 
 def duplicate_and_paste_transforms():
-    if not copiedTransforms:
+    if not clipboard["many"]:
         mset.err("Nothing copied yet.")
         return
-    selected = mset.getSelectedObjects()
-    if not selected:
-        mset.err("Select the object to duplicate.")
-        return
     placed = []
-    for obj in selected:
-        write_transform(obj, copiedTransforms[0])
-        placed.append(obj)
-        for transform in copiedTransforms[1:]:
-            duplicate = obj.duplicate(obj.name)
-            write_transform(duplicate, transform)
-            placed.append(duplicate)
-    mset.setSelectedObjects(placed)
-    mset.refreshUI()
-
-
-def number_pattern(text, index):
-    return re.sub(r"#+", lambda m: str(index).zfill(len(m.group(0))), text)
+    for obj in selection("Select the object to duplicate."):
+        targets = [obj] + [obj.duplicate(obj.name) for _ in clipboard["many"][1:]]
+        for target, transform in zip(targets, clipboard["many"]):
+            write_transform(target, transform)
+        placed.extend(targets)
+    if placed:
+        mset.setSelectedObjects(placed)
+        mset.refreshUI()
 
 
 def rename_selected():
@@ -182,205 +142,115 @@ def rename_selected():
     if not text:
         mset.err("Type a name first.")
         return
-    meshes = get_selected_meshes()
-    if not meshes:
-        mset.err("Select at least one mesh.")
-        return
     suffix_only = not re.search(r"[A-Za-z]", text)
-    for index, mesh in enumerate(meshes, 1):
-        new_name = number_pattern(text, index)
-        mesh.name = mesh.name + new_name if suffix_only else new_name
+    for index, mesh in enumerate(selected_meshes(), 1):
+        name = re.sub(r"#+", lambda m: str(index).zfill(len(m.group(0))), text)
+        mesh.name = mesh.name + name if suffix_only else name
     mset.refreshUI()
 
 
-def add_suffix(suffix):
-    meshes = get_selected_meshes()
-    if not meshes:
-        mset.err("Select at least one mesh.")
-        return
-    for mesh in meshes:
-        if not mesh.name.lower().endswith(suffix.lower()):
-            mesh.name = mesh.name + suffix
-    mset.refreshUI()
-
-
-def remove_suffix(suffix):
-    meshes = get_selected_meshes()
-    if not meshes:
-        mset.err("Select at least one mesh.")
-        return
-    for mesh in meshes:
-        if mesh.name.lower().endswith(suffix.lower()):
+def edit_suffix(suffix, add):
+    for mesh in selected_meshes():
+        has_suffix = mesh.name.lower().endswith(suffix.lower())
+        if add and not has_suffix:
+            mesh.name += suffix
+        elif not add and has_suffix:
             mesh.name = mesh.name[:-len(suffix)]
     mset.refreshUI()
 
 
 def assign_new_material():
-    meshes = get_selected_meshes()
-    if not meshes:
-        mset.err("Select at least one mesh.")
-        return
-    for mesh in meshes:
+    for mesh in selected_meshes():
         material = mset.Material(mesh.name)
-        assign_material(mesh, material)
+        subs = submeshes(mesh)
+        for sub in subs:
+            sub.material = material
+        if not subs:
+            mesh.addSubmesh(mesh.name + "_submesh", material=material, startIndex=0, indexCount=-1)
     mset.refreshUI()
 
 
 def rename_material_from_geometry():
-    meshes = get_selected_meshes()
-    if not meshes:
-        mset.err("Select at least one mesh.")
-        return
-
     groups = {}
-    order = []
-    for mesh in meshes:
-        material = get_material(mesh)
-        if material is None:
-            continue
-        if material.name not in groups:
-            groups[material.name] = (material, [])
-            order.append(material.name)
-        groups[material.name][1].append(mesh)
-
+    for mesh in selected_meshes():
+        for sub in submeshes(mesh):
+            if sub.material is not None:
+                material, users = groups.setdefault(sub.material.name, (sub.material, []))
+                users.append(mesh)
+                break
     if not groups:
         mset.err("The selected meshes have no material.")
         return
-
-    for key in order:
-        material, users = groups[key]
+    for material, users in groups.values():
         if len(users) == 1:
             candidates = [users[0].name, base_name(users[0].name)]
         else:
             candidates = [shared_name(users)]
         material.name = free_name(candidates, material)
-
     mset.refreshUI()
+
+
+def button(text, action):
+    control = mset.UIButton(text)
+    control.onClick = action
+    return control
+
+
+def field(action):
+    control = mset.UITextField()
+    control.onChange = action
+    return control
+
+
+def drawer(name, build):
+    holder = mset.UIWindow(name=name + " Window")
+    for row in build():
+        for item in row:
+            holder.addElement(mset.UILabel(item) if isinstance(item, str) else item)
+        holder.addReturn()
+    control = mset.UIDrawer(name=name)
+    control.containedControl = holder
+    control.open = True
+    return control
 
 
 window = mset.UIWindow("Marmoset v5 Toolkit")
 window.width = 360
 
-sceneDrawer = mset.UIDrawer(name="Scene")
-sceneWindow = mset.UIWindow(name="Scene Window")
-sceneDrawer.containedControl = sceneWindow
-sceneDrawer.open = True
+searchField = field(find_and_select)
+renameField = field(rename_selected)
 
-collapseButton = mset.UIButton("Collapse Everything")
-collapseButton.onClick = collapse_everything
-sceneWindow.addElement(collapseButton)
-sceneWindow.addReturn()
+layout = [
+    drawer("Scene", lambda: [
+        [button("Collapse Everything", collapse_everything)],
+        [drawer("Transforms", lambda: [
+            [button("Copy", copy_transform), button("Paste", paste_transform)],
+            [button("Copy Multiple", copy_multiple_transforms),
+             button("Duplicate and Paste", duplicate_and_paste_transforms)],
+        ])],
+    ]),
+    drawer("Selecting", lambda: [
+        [button("Select all geometry in the scene", select_all_geometry)],
+        [searchField, button("Find and Select", find_and_select)],
+    ]),
+    drawer("Naming", lambda: [
+        [renameField, button("Rename", rename_selected)],
+        ["Use ## to mark the number: ## = 01, 02   #### = 0001, 0002"],
+        ["On selected objects"],
+        [button("Add suffix _low", lambda: edit_suffix("_low", True)),
+         button("Remove suffix _low", lambda: edit_suffix("_low", False))],
+        [button("Add suffix _high", lambda: edit_suffix("_high", True)),
+         button("Remove suffix _high", lambda: edit_suffix("_high", False))],
+    ]),
+    drawer("Materials", lambda: [
+        [button("Assign New Material", assign_new_material)],
+        [button("Rename Material Based on Geometry Name", rename_material_from_geometry)],
+    ]),
+]
 
-transformsDrawer = mset.UIDrawer(name="Transforms")
-transformsWindow = mset.UIWindow(name="Transforms Window")
-transformsDrawer.containedControl = transformsWindow
-transformsDrawer.open = True
-
-copyButton = mset.UIButton("Copy")
-copyButton.onClick = copy_transform
-transformsWindow.addElement(copyButton)
-
-pasteButton = mset.UIButton("Paste")
-pasteButton.onClick = paste_transform
-transformsWindow.addElement(pasteButton)
-transformsWindow.addReturn()
-
-copyMultipleButton = mset.UIButton("Copy Multiple")
-copyMultipleButton.onClick = copy_multiple_transforms
-transformsWindow.addElement(copyMultipleButton)
-
-duplicatePasteButton = mset.UIButton("Duplicate and Paste")
-duplicatePasteButton.onClick = duplicate_and_paste_transforms
-transformsWindow.addElement(duplicatePasteButton)
-transformsWindow.addReturn()
-
-sceneWindow.addElement(transformsDrawer)
-sceneWindow.addReturn()
-
-window.addElement(sceneDrawer)
-window.addReturn()
-
-selectingDrawer = mset.UIDrawer(name="Selecting")
-selectingWindow = mset.UIWindow(name="Selecting Window")
-selectingDrawer.containedControl = selectingWindow
-selectingDrawer.open = True
-
-selectAllButton = mset.UIButton("Select all geometry in the scene")
-selectAllButton.onClick = select_all_geometry
-selectingWindow.addElement(selectAllButton)
-selectingWindow.addReturn()
-
-searchField = mset.UITextField()
-searchField.onChange = find_and_select
-selectingWindow.addElement(searchField)
-
-findButton = mset.UIButton("Find and Select")
-findButton.onClick = find_and_select
-selectingWindow.addElement(findButton)
-selectingWindow.addReturn()
-
-window.addElement(selectingDrawer)
-window.addReturn()
-
-namingDrawer = mset.UIDrawer(name="Naming")
-namingWindow = mset.UIWindow(name="Naming Window")
-namingDrawer.containedControl = namingWindow
-namingDrawer.open = True
-
-renameField = mset.UITextField()
-renameField.onChange = rename_selected
-namingWindow.addElement(renameField)
-
-renameButton = mset.UIButton("Rename")
-renameButton.onClick = rename_selected
-namingWindow.addElement(renameButton)
-namingWindow.addReturn()
-
-namingWindow.addElement(mset.UILabel("Use ## to mark the number: ## = 01, 02   #### = 0001, 0002"))
-namingWindow.addReturn()
-
-namingWindow.addElement(mset.UILabel("On selected objects"))
-namingWindow.addReturn()
-
-addLowButton = mset.UIButton("Add suffix _low")
-addLowButton.onClick = lambda: add_suffix("_low")
-namingWindow.addElement(addLowButton)
-
-removeLowButton = mset.UIButton("Remove suffix _low")
-removeLowButton.onClick = lambda: remove_suffix("_low")
-namingWindow.addElement(removeLowButton)
-namingWindow.addReturn()
-
-addHighButton = mset.UIButton("Add suffix _high")
-addHighButton.onClick = lambda: add_suffix("_high")
-namingWindow.addElement(addHighButton)
-
-removeHighButton = mset.UIButton("Remove suffix _high")
-removeHighButton.onClick = lambda: remove_suffix("_high")
-namingWindow.addElement(removeHighButton)
-namingWindow.addReturn()
-
-window.addElement(namingDrawer)
-window.addReturn()
-
-materialsDrawer = mset.UIDrawer(name="Materials")
-materialsWindow = mset.UIWindow(name="Materials Window")
-materialsDrawer.containedControl = materialsWindow
-materialsDrawer.open = True
-
-assignButton = mset.UIButton("Assign New Material")
-assignButton.onClick = assign_new_material
-materialsWindow.addElement(assignButton)
-materialsWindow.addReturn()
-
-renameMaterialButton = mset.UIButton("Rename Material Based on Geometry Name")
-renameMaterialButton.onClick = rename_material_from_geometry
-materialsWindow.addElement(renameMaterialButton)
-materialsWindow.addReturn()
-
-window.addElement(materialsDrawer)
-window.addReturn()
-
+for section in layout:
+    window.addElement(section)
+    window.addReturn()
 window.addElement(mset.UILabel(""))
 window.addReturn()
 window.addElement(mset.UILabel("Made by SpeedySquirrel  -  GitHub: SpeedySquirrel"))

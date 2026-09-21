@@ -1,4 +1,4 @@
-# Marmoset Toolkit
+# MarmoSquirrel
 
 A collection of small scripts I use every day to speed up work in Marmoset Toolbag.
 
@@ -11,7 +11,7 @@ A collection of small scripts I use every day to speed up work in Marmoset Toolb
 `C:\Users\<your-username>\AppData\Local\Marmoset Toolbag 5\plugins`
 
 2. In Marmoset Toolbag, go to **Edit > Plugins > Refresh**.
-3. Open it from **Edit > Plugins > MarmosetToolkit**.
+3. Open it from **Edit > Plugins > MarmoSquirrel**.
 
 
 ---

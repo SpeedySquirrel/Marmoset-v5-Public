@@ -2,6 +2,7 @@ import mset
 import os
 import re
 
+VERSION = "1.03"
 SUFFIX_PATTERN = re.compile(r"[\s_\-.]*(low|high|hi|lo|lp|hp|lod\d*|\d+)$", re.IGNORECASE)
 TRANSFORM_KEYS = ("position", "rotation", "scale")
 clipboard = {"one": None, "many": []}
@@ -214,7 +215,7 @@ def drawer(name, build):
     return control
 
 
-window = mset.UIWindow("Marmoset v5 Toolkit")
+window = mset.UIWindow("MarmoSquirrel v" + VERSION)
 window.width = 360
 
 searchField = field(find_and_select)

@@ -8,7 +8,7 @@ A collection of small scripts I use every day to speed up work in Marmoset Toolb
 
 1. Copy the Python script into your Marmoset plugins folder. The usual path is:
 
-C:\Users\<your-username>\AppData\Local\Marmoset Toolbag 5\plugins
+`C:\Users\<your-username>\AppData\Local\Marmoset Toolbag 5\plugins`
 
 2. In Marmoset Toolbag, go to **Edit > Plugins > Refresh**.
 3. Open it from **Edit > Plugins > MarmosetToolkit**.
@@ -24,10 +24,14 @@ Collapses all folders and objects in the Scene/Outliner panel. Handy when your s
 ### Transforms
 
 #### Copy / Paste
-**Copy** stores the position, rotation and scale of the selected object. **Paste** applies them to every object you have selected. The pivot is left untouched.
+**Copy** stores the position, rotation and scale of the selected object. 
+**Paste** applies them to every object you have selected. The pivot is left untouched.
+
+
 
 #### Copy Multiple / Duplicate and Paste
-**Copy Multiple** stores the transforms of all selected objects, in selection order. **Duplicate and Paste** takes the selected object, duplicates it as many times as needed, and places each copy on one of the stored transforms.
+**Copy Multiple** stores the transforms of all selected objects, in selection order. 
+**Duplicate and Paste** takes the selected object, duplicates it as many times as needed, and places each copy on one of the stored transforms.
 
 **Example:** you have 4 `cubes` in the scene and you want to replace them with spheres. Select all 4 cubes and click **Copy Multiple**. Then select a single `sphere` mesh and click **Duplicate and Paste**. The sphere is duplicated 3 times, giving you 4 spheres, and each one moves onto a cube's transform.
 

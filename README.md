@@ -72,10 +72,21 @@ Adding skips meshes that already end with the suffix, and removing only touches 
 ## Materials
 
 ### Assign New Material
-Creates a new default material for each selected mesh and names it after that mesh.
+Creates a new default material for each selected mesh and names it after that mesh. If you select multiple meshes all of them will have a separate material named correctly.
 
 ### Rename Material Based on Geometry Name
 Renames the materials on the selected meshes to match the mesh names in the Scene/Outliner.
 
 - **Separate materials:** select `helmet` and `armor`, each with its own material, and the materials are renamed to `helmet` and `armor`.
 - **Shared material:** if several meshes share one material and have similar names (e.g. `helmet_low` and `helmet_high`), the material gets the common part of the name: `helmet`.
+
+
+---
+
+## Support the Project
+
+If this toolkit saved you time:
+
+<a href="https://buymeacoffee.com/speedysquirrel">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" width="200">
+</a>
